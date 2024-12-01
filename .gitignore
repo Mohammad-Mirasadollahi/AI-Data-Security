@@ -1,19 +1,9 @@
 # local
-files/*
-logs/*
+models
 models/mnli_model
 models/saved_models
-notebooks/files
-notebooks/results
-notebooks/word_files
-notebooks/document_topics.csv
-notebooks/g.ipynb
-notebooks/ocr_processing.ipynb
-notebooks/topic_modeling_analysis.ipynb
-results/*
-tests/*
-notebooks/logs
-notebooks/output_files
+my
+
 # User-specific stuff
 .idea/**/workspace.xml
 .idea/**/tasks.xml

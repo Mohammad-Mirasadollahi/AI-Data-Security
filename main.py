@@ -1,66 +1,112 @@
+# main.py
+
 import logging
-from models.topic_modeler import TopicModeler
-from models.categorizer import Categorizer
-from readers.pdf_document_reader import WordDocumentReader
-from summarizers.transformers_summarizer import TransformersSummarizer
-from processors.integrated_processor import IntegratedProcessor
-from logger import logger
-from config import Config
+import os
+import shutil
+from typing import List
 
-def main():
-    pdf_folder_path = './notebooks/word_files/'
-    predefined_topics = [
-        {'label': 'فناوری'},
-        {'label': 'سلامت و سبک زندگی'},
-        {'label': 'هنر و سرگرمی'},
-        {'label': 'سفر و مکان‌ها'},
-        {'label': 'آموزش'}
-    ]
+from DatabaseHandler.database_handler import DatabaseHandler
+from DocumentLoader.document_loader import DocumentLoader
+from TopicModeler.topic_modeler import TopicModeler
 
+
+def setup_logging(log_folder: str, log_file: str = 'document_loader.log'):
+    """
+    Sets up logging configuration.
+
+    Parameters:
+    log_folder (str): Path to the log folder.
+    log_file (str): Name of the log file.
+    """
+    os.makedirs(log_folder, exist_ok=True)
+    log_path = os.path.join(log_folder, log_file)
+
+    # Configure logging only if no handlers are present
+    if not logging.getLogger().hasHandlers():
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_path, encoding='utf-8'),
+                logging.StreamHandler()
+            ]
+        )
+    logging.info("Logging configured.")
+
+
+def process_documents(predefined_topics: List[str], input_folder: str, output_folder: str, db_handler: DatabaseHandler):
+    """
+    Processes documents: load, encode, assign topics, store in DB, organize output folders.
+
+    Parameters:
+    predefined_topics (List[str]): List of predefined topics.
+    input_folder (str): Path to input folder containing documents.
+    output_folder (str): Path to output folder to organize documents by topic.
+    db_handler (DatabaseHandler): Instance of DatabaseHandler to interact with Qdrant.
+    """
+    logger = logging.getLogger(__name__)
+
+    # Initialize DocumentLoader
+    document_loader = DocumentLoader(logger=logger)
+    file_names, documents = document_loader.load_documents(input_folder)
+
+    if not documents:
+        logger.error("No documents to process. Exiting.")
+        return
+
+    num_documents = len(documents)
+    logger.info(f"Number of documents loaded: {num_documents}")
+
+    # Initialize TopicModeler with predefined topics
+    topic_modeler = TopicModeler(predefined_topics=predefined_topics)
+    logger.info("TopicModeler initialized with predefined topics.")
+
+    # Encode documents
     try:
-        logger.info("شروع اجرای برنامه مدل‌سازی موضوعات.")
-        document_reader = WordDocumentReader()
-        logger.info("اجرای تشخیص خودکار موضوعات...")
-        topic_modeler_auto = TopicModeler()
-        categorizer_auto = Categorizer(topic_modeler_auto)
-        auto_processor = IntegratedProcessor(
-            topic_modeler=topic_modeler_auto,
-            categorizer=categorizer_auto,
-            document_reader=document_reader,
-            #summarizer=summarizer,
-            folder_path=pdf_folder_path
-        )
-        auto_results = auto_processor.run()
-        print(auto_results)
-        logger.info("اجرای با موضوعات از پیش تعریف شده...")
-        topic_modeler_manual = TopicModeler(predefined_topics=predefined_topics)
-        categorizer_manual = Categorizer(topic_modeler_manual)
-        manual_processor = IntegratedProcessor(
-            topic_modeler=topic_modeler_manual,
-            categorizer=categorizer_manual,
-            document_reader=document_reader,
-            #summarizer=summarizer,
-            folder_path=pdf_folder_path,
-            predefined_topics=predefined_topics
-        )
-        manual_results = manual_processor.run()
-        logger.info("اجرای با طبقه‌بندی صفر-شات برای برچسب‌گذاری...")
-        topic_modeler_zero_shot = TopicModeler()
-        categorizer_zero_shot = Categorizer(topic_modeler_zero_shot)
-        zero_shot_processor = IntegratedProcessor(
-            topic_modeler=topic_modeler_zero_shot,
-            categorizer=categorizer_zero_shot,
-            document_reader=document_reader,
-            #summarizer=summarizer,
-            folder_path=pdf_folder_path
-        )
-        zero_shot_results = zero_shot_processor.run(use_zero_shot=True)
-
-        logger.info("تمامی فرآیندهای مدل‌سازی موضوعات با موفقیت انجام شد.")
-
+        document_embeddings = topic_modeler.embedding_model.encode(documents, show_progress_bar=True)
+        logger.info("Document embeddings encoded successfully.")
     except Exception as e:
-        logger.error(f"خطایی در اجرای اصلی رخ داده است: {str(e)}")
-        print(f"خطایی رخ داده است. لطفاً فایل لاگ را بررسی کنید: {Config.LOG_DIR}")
+        logger.error(f"Failed to encode documents: {e}")
+        return
 
-if __name__ == "__main__":
-    main()
+    # Assign predefined labels
+    try:
+        assigned_labels, confidences = topic_modeler.assign_predefined_labels(document_embeddings)
+        logger.info("Assigned predefined labels to documents successfully.")
+    except Exception as e:
+        logger.error(f"Failed to assign labels: {e}")
+        return
+
+    # Prepare documents for database insertion
+    documents_to_insert = []
+    for file_name, topic, text, embedding in zip(file_names, assigned_labels, documents, document_embeddings):
+        file_type = os.path.splitext(file_name)[1].lower()
+        documents_to_insert.append({
+            "file_name": file_name,
+            "topic": topic,
+            "text": text,
+            "file_type": file_type,
+            "embedding": embedding.tolist()  # Convert numpy array to list for JSON serialization
+        })
+
+    # Insert documents into Qdrant
+    try:
+        db_handler.insert_documents(documents_to_insert)
+        logger.info("Inserted documents into Qdrant successfully.")
+    except Exception as e:
+        logger.error(f"Failed to insert documents into database: {e}")
+        return
+
+    # Organize documents into output folder subdirectories by topic
+    try:
+        os.makedirs(output_folder, exist_ok=True)
+        for file_name, topic in zip(file_names, assigned_labels):
+            src_path = os.path.join(input_folder, file_name)
+            dest_folder = os.path.join(output_folder, topic)
+            dest_path = os.path.join(dest_folder, file_name)
+            os.makedirs(dest_folder, exist_ok=True)
+            shutil.copy2(src_path, dest_path)
+            logger.info(f"Copied '{file_name}' to '{dest_folder}'.")
+        logger.info("Document organization and storage complete.")
+    except Exception as e:
+        logger.error(f"Failed to organize documents into folders: {e}")

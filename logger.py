@@ -6,7 +6,6 @@ from config import Config
 
 
 def setup_logging():
-
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f'topic_modeling_{timestamp}.log'
     os.makedirs(Config.LOG_DIR, exist_ok=True)
@@ -24,5 +23,7 @@ def setup_logging():
     logging.getLogger('').addHandler(console)
 
     return log_path
+
+
 log_path = setup_logging()
 logger = logging.getLogger(__name__)
