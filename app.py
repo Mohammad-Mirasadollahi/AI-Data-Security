@@ -1,111 +1,160 @@
-import datetime
+# app.py
+
+import logging
 import os
 
 import pandas as pd
 import streamlit as st
 
+from DatabaseHandler.database_handler import DatabaseHandler
 from config import Config
-from logger import logger
-from models.categorizer import Categorizer
-from models.topic_modeler import TopicModeler
-from processors.integrated_processor import IntegratedProcessor
-from readers.word_document_reader import WordDocumentReader
+from main import setup_logging, process_documents  # Import functions from main.py
 
 
-def process_documents(folder_path, predefined_topics):
-    try:
-        logger.info("شروع اجرای برنامه مدل‌سازی موضوعات.")
-        document_reader = WordDocumentReader()
+# Initialize logging for the Streamlit app
+def initialize_logging(log_folder: str, log_file: str = 'document_loader.log'):
+    """
+    Initializes logging for the Streamlit app.
 
-        logger.info("اجرای با موضوعات از پیش تعریف شده...")
-        topic_modeler_manual = TopicModeler(predefined_topics=predefined_topics)
-        categorizer_manual = Categorizer(topic_modeler_manual)
-        manual_processor = IntegratedProcessor(
-            topic_modeler=topic_modeler_manual,
-            categorizer=categorizer_manual,
-            document_reader=document_reader,
-            folder_path=folder_path,
-            predefined_topics=predefined_topics
-        )
-        manual_results = manual_processor.run()
-
-        logger.info("تمامی فرآیندهای مدل‌سازی موضوعات با موفقیت انجام شد.")
-
-        # Combine results
-        combined_df = pd.concat([manual_results], ignore_index=True)
-
-        if 'Topic Label' in combined_df.columns and 'Assigned Label' not in combined_df.columns:
-            combined_df.rename(columns={'Topic Label': 'Assigned Label'}, inplace=True)
-
-        combined_df = combined_df.sort_values('Confidence', ascending=False).reset_index(drop=True)
-
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        os.makedirs(Config.RESULTS_DIR, exist_ok=True)
-        output_file = os.path.join(Config.RESULTS_DIR, f'topic_results_{timestamp}.csv')
-        combined_df.to_csv(output_file, index=False)
-        logger.info(f"نتایج در فایل '{output_file}' ذخیره شد.")
-
-        label_column = 'Assigned Label' if 'Assigned Label' in combined_df.columns else 'Topic Label'
-        grouped = combined_df.groupby(label_column)
-        grouped_data = {label: group['Document'].tolist() for label, group in grouped}
-
-        results = {
-
-            "manual": manual_results,
-
-            "combined_df": combined_df,
-            "output_file": output_file,
-            "grouped_data": grouped_data
-        }
-
-        return results
-
-    except Exception as e:
-        logger.error(f"خطایی در اجرای اصلی رخ داده است: {str(e)}")
-        st.error(f"خطایی رخ داده است. لطفاً فایل لاگ را بررسی کنید: {Config.LOG_DIR}")
-        return None
+    Parameters:
+    log_folder (str): Path to the log folder.
+    log_file (str): Name of the log file.
+    """
+    setup_logging(log_folder, log_file)  # Utilize setup_logging from main.py
 
 
+# Main Streamlit app function
 def main():
-    st.set_page_config(page_title="سیستم مدل‌سازی موضوعات", layout="wide")
-    st.title("سیستم مدل‌سازی موضوعات برای فایل‌های PDF و Word")
+    # Load configurations (optional, can be used for default values)
+    config = Config()
 
-    st.subheader("تعریف موضوعات از پیش تعریف شده")
-    st.write("هر موضوع را در یک خط جداگانه وارد کنید.")
-    predefined_topics_input = st.text_area(
-        "موضوعات از پیش تعریف شده (هر خط یک موضوع)",
-        value="فناوری\nسلامت و سبک زندگی\nهنر و سرگرمی\nسفر و مکان‌ها\nآموزش"
-    )
-    predefined_topics = [{'label': topic.strip()} for topic in predefined_topics_input.split('\n') if topic.strip()]
-    folder_path = './notebooks/word_files/'
-    if st.button("پردازش فایل‌ها"):
-        if os.path.exists(folder_path):
-            with st.spinner("در حال پردازش فایل‌ها..."):
-                results = process_documents(folder_path, predefined_topics)
-            if results:
-                st.success("مدل‌سازی موضوعات با موفقیت انجام شد.")
+    # Initialize logging
+    initialize_logging(config.log_folder)
+    logger = logging.getLogger(__name__)
 
-                st.subheader("نتایج مدل‌سازی موضوعات")
-                st.dataframe(results['combined_df'])
+    st.title("Document Processing and Categorization Tool")
+    st.write("Upload documents, assign topics, and manage your document database.")
 
-                with open(results['output_file'], "rb") as file:
-                    btn = st.download_button(
-                        label="دانلود نتایج به صورت CSV",
-                        data=file,
-                        file_name=os.path.basename(results['output_file']),
-                        mime="text/csv"
-                    )
+    st.header("1. Input Configuration")
 
-                st.subheader("نتایج دسته‌بندی اسناد بر اساس دسته‌ها")
-                for label, documents in results['grouped_data'].items():
-                    with st.expander(f"دسته: {label}"):
-                        for doc in documents:
-                            st.write(f"- {doc}")
-            else:
-                st.error("خطایی در پردازش فایل‌ها رخ داده است.")
+    with st.form("config_form"):
+        st.subheader("Predefined Topics")
+        predefined_topics_input = st.text_area(
+            "Enter predefined topics (one per line):",
+            height=200,
+            help="Provide each topic on a separate line."
+        )
+
+        st.subheader("Input Folder Path")
+        input_folder = st.text_input(
+            "Enter the path to the input folder containing documents:",
+            value=config.input_folder,
+            help="Specify the directory where your documents are stored."
+        )
+
+        st.subheader("Output Folder Path")
+        output_folder = st.text_input(
+            "Enter the path to the output folder:",
+            value=config.output_folder,
+            help="The directory where categorized documents will be stored."
+        )
+
+        submit_button = st.form_submit_button(label='Start Processing')
+
+    if submit_button:
+        # Process predefined topics and check validity
+        predefined_topics = [topic.strip() for topic in predefined_topics_input.strip().split('\n') if topic.strip()]
+        if not predefined_topics:
+            st.error("Please provide at least one predefined topic.")
+            logger.error("No predefined topics provided by the user.")
+        elif not input_folder or not os.path.isdir(input_folder):
+            st.error("Please provide a valid input folder path.")
+            logger.error(f"Invalid input folder path provided: {input_folder}")
         else:
-            st.error("مسیر پوشه مشخص شده وجود ندارد. لطفاً مسیر معتبر وارد کنید.")
+            if not output_folder:
+                st.error("Please provide a valid output folder path.")
+                logger.error("No output folder path provided by the user.")
+            else:
+                # Initialize DatabaseHandler
+                try:
+                    db_handler = DatabaseHandler(
+                        host=config.qdrant_host,
+                        port=config.qdrant_port,
+                        api_key=config.qdrant_api_key,
+                        collection_name="documents"
+                    )
+                except Exception as e:
+                    st.error(f"Failed to initialize DatabaseHandler: {e}")
+                    logger.error(f"Failed to initialize DatabaseHandler: {e}")
+                    return
+
+                # Process Documents
+                with st.spinner('Processing documents...'):
+                    process_documents(predefined_topics, input_folder, output_folder, db_handler)
+                st.success('Document processing and categorization completed successfully!')
+                logger.info("Document processing and categorization completed successfully.")
+
+    st.header("2. Database Statistics")
+
+    if st.button("Load Statistics"):
+        try:
+            db_handler = DatabaseHandler(
+                host=config.qdrant_host,
+                port=config.qdrant_port,
+                api_key=config.qdrant_api_key,
+                collection_name="documents"
+            )
+            statistics = db_handler.get_statistics()
+            st.write(f"**Total Documents:** {statistics['total_documents']}")
+            st.write("**Documents per Topic:**")
+            df_stats = pd.DataFrame(list(statistics['documents_per_topic'].items()), columns=['Topic', 'Count'])
+            st.dataframe(df_stats)
+        except Exception as e:
+            st.error(f"Failed to retrieve statistics: {e}")
+            logger.error(f"Failed to retrieve statistics: {e}")
+
+    st.header("3. Search Documents by Topic")
+
+    db_handler = None
+    try:
+        db_handler = DatabaseHandler(
+            host=config.qdrant_host,
+            port=config.qdrant_port,
+            api_key=config.qdrant_api_key,
+            collection_name="documents"
+        )
+    except Exception as e:
+        st.error(f"Failed to connect to the database: {e}")
+        logger.error(f"Failed to connect to the database: {e}")
+
+    if db_handler:
+        try:
+            # Fetch topics from the database statistics
+            statistics = db_handler.get_statistics()
+            topics = list(statistics['documents_per_topic'].keys())
+            selected_topic = st.selectbox("Select a topic to search:", topics)
+
+            # Add a text input for the user to write a query text
+            query_text = st.text_area("Write a text to search similar documents:", height=150)
+
+            if st.button("Search"):
+                with st.spinner(f"Searching for documents in topic: {selected_topic}..."):
+                    documents = db_handler.search_documents_by_vector(topic=selected_topic, query_text=query_text)
+                if documents:
+                    st.write(f"**Found {len(documents)} documents in topic '{selected_topic}':**")
+                    for doc in documents:
+                        st.markdown(f"### {doc['file_name']}")
+                        st.markdown(f"**Type:** {doc['file_type']}")
+                        st.markdown(f"**Topic:** {doc['topic']}")
+                        st.markdown(f"**Content Preview:** {doc['text'][:500]}...")  # Show first 500 characters
+                        st.markdown("---")
+                else:
+                    st.info(f"No documents found for topic '{selected_topic}'.")
+        except Exception as e:
+            st.error(f"Failed to search documents: {e}")
+            logger.error(f"Failed to search documents: {e}")
 
 
+# Run the main function
 if __name__ == "__main__":
     main()
