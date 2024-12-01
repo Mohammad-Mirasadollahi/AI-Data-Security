@@ -3,6 +3,7 @@ models
 models/mnli_model
 models/saved_models
 my
+.idea
 
 # User-specific stuff
 .idea/**/workspace.xml
