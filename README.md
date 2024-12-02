@@ -36,7 +36,7 @@ process of categorizing and searching through your documents with ease.
 - **Data Encryption:** Protecting sensitive data with robust encryption.
 - **OCR Capability:** Extracting text from images efficiently.
 - **API Development:** Enabling seamless integration with external systems.
-- 
+  
 ### 🌟 Long-term Vision
 
 - **Advanced Admin Panel:** Centralized control and system monitoring.
