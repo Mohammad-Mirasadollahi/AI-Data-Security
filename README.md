@@ -1,4 +1,4 @@
-# 📄 Document Processing and Categorization Tool
+# AI Data Security: Next-Gen Data Classification and Encryption
 
 ![License](https://img.shields.io/github/license/Mohammad-Mirasadollahi/AI-Data-Security)
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)
@@ -6,10 +6,11 @@
 
 ## 📖 Description
 
-The **Document Processing and Categorization Tool** is an open-source application designed to help users efficiently
-manage, categorize, and search through large collections of documents. Utilizing **Streamlit** for an intuitive user
-interface, **Qdrant** as a scalable vector database, and **Sentence Transformers** for generating high-quality
-embeddings, this tool provides a seamless experience for organizing and retrieving documents based on predefined topics.
+**AI Data Security** is an **open-source** solution that leverages the power of **Artificial Intelligence (AI)** to automatically **classify** and **encrypt** your critical data, ensuring maximum protection. By replacing outdated methods like regex-based detection, it reduces errors, improves accuracy, and identifies both known and previously unknown sensitive information within your organization.
+
+Designed as the ***last Line of Defense gainst Hackers***, AI Data Security guarantees that even if a breach occurs, your sensitive data remains completely inaccessible. Its intelligent algorithms eliminate manual intervention, streamline data protection processes, and ensure compliance with data protection laws.
+
+With **AI Data Security**, you can confidently safeguard your data, future-proof your organization against evolving cyber threats.
 
 Whether you're a researcher, student, or professional managing extensive documentation, this tool streamlines the
 process of categorizing and searching through your documents with ease.
@@ -25,6 +26,27 @@ process of categorizing and searching through your documents with ease.
 - **Full Document View & Download:** Allows users to preview document content and download full documents directly from
   the UI.
 - **Logging:** Comprehensive logging to track application events and errors for easy debugging.
+
+## Feature Roadmap
+
+### 🚀 Upcoming Features
+
+- **Parallel Processing:** Improving performance with concurrent task execution.
+- **Client Agent:** Installing agents on client machines for direct communication with the core system.
+- **Data Encryption:** Protecting sensitive data with robust encryption.
+- **OCR Capability:** Extracting text from images efficiently.
+- **API Development:** Enabling seamless integration with external systems.
+- 
+### 🌟 Long-term Vision
+
+- **Advanced Admin Panel:** Centralized control and system monitoring.
+- **File Logging:** Tracking file activity.
+- **Ransomware Protection:** Securing data against Ransomwares.
+- **2FA Security:** Adding an extra layer of authentication for file access.
+- **GPU Utilization:** Accelerating processes with GPU power.
+- **Multi-Language Support:** Making the system accessible globally.
+- **Post-Quantum Cryptography:** Future-proofing data security with algorithms resistant to quantum computing threats.
+- **System Clustering:** Boosting system reliability and optimizing processes by clustering resources, ensuring high availability and load balancing.
 
 ## 🛠️ Installation
 
