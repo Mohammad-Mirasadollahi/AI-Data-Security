@@ -27,7 +27,7 @@ process of categorizing and searching through your documents with ease.
   the UI.
 - **Logging:** Comprehensive logging to track application events and errors for easy debugging.
 
-## Feature Roadmap
+## 📢 Feature Roadmap
 
 ### 🚀 Upcoming Features
 
