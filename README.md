@@ -8,7 +8,7 @@
 
 **AI Data Security** is an **open-source** solution that leverages the power of **Artificial Intelligence (AI)** to automatically **classify** and **encrypt** your critical data, ensuring maximum protection. By replacing outdated methods like regex-based detection, it reduces errors, improves accuracy, and identifies both known and previously unknown sensitive information within your organization.
 
-Designed as the ***last Line of Defense gainst Hackers***, AI Data Security guarantees that even if a breach occurs, your sensitive data remains completely inaccessible. Its intelligent algorithms eliminate manual intervention, streamline data protection processes, and ensure compliance with data protection laws.
+Designed as the ***last Line of Defense Against Adversaries***, AI Data Security guarantees that even if a breach occurs, your sensitive data remains completely inaccessible. Its intelligent algorithms eliminate manual intervention, streamline data protection processes, and ensure compliance with data protection laws.
 
 With **AI Data Security**, you can confidently safeguard your data, future-proof your organization against evolving cyber threats.
 
