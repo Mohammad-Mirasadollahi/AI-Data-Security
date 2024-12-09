@@ -1,3 +1,9 @@
+# config.yaml
+
 input_folder: "./my/dsds"    # Replace with your actual input folder path
-output_folder: "output_docs"  # Replace with your desired output folder path
+output_folder: "output_docs" # Replace with your desired output folder path
 log_folder: "logs"           # Folder to store log files
+
+# Qdrant settings
+qdrant_host: "0.0.0.0"        # IP address for Qdrant to listen on; "0.0.0.0" allows access from any IP
+qdrant_port: 6333             # Port for Qdrant
