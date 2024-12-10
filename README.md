@@ -15,6 +15,18 @@ With **AI Data Security**, you can confidently safeguard your data, future-proof
 Whether you're a researcher, student, or professional managing extensive documentation, this tool streamlines the
 process of categorizing and searching through your documents with ease.
 
+> ⚠️ **IMPORTANT DISCLAIMER**
+> 
+> This project is currently a **Proof of Concept** and is under active development:
+> - Features are incomplete and actively being developed
+> - Bugs and breaking changes are expected
+> - Project structure and APIs may change significantly
+> - Documentation may be outdated or incomplete
+> - Not recommended for production use at this time
+> - Security features are still being implemented
+> 
+> We welcome all feedback and contributions, but please use at your own risk!
+
 ## ✨ Features
 
 - **Document Loading:** Supports loading various document types from a specified input folder.
