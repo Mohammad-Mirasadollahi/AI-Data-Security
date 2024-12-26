@@ -1,4 +1,9 @@
+# database_handler.py
+
+# DatabaseHandler/database_handler.py
+
 import logging
+from typing import List, Dict, Optional
 
 import numpy as np
 from qdrant_client import QdrantClient
@@ -7,7 +12,20 @@ from sentence_transformers import SentenceTransformer
 
 
 class DatabaseHandler:
-    def __init__(self, host: str, port: int, api_key=None, collection_name: str = "documents"):
+    """
+    A class to manage the connection to the Qdrant database and perform operations related to documents.
+    """
+
+    def __init__(self, host: str, port: int, api_key: Optional[str] = None, collection_name: str = "documents"):
+        """
+        Initializes the DatabaseHandler by connecting to Qdrant and setting up the desired collection.
+
+        Parameters:
+        host (str): Qdrant host.
+        port (int): Qdrant port.
+        api_key (Optional[str]): API key if required.
+        collection_name (str): Name of the collection in Qdrant.
+        """
         self.collection_name = collection_name
         try:
             self.client = QdrantClient(url=f"{host}:{port}")
@@ -17,7 +35,7 @@ class DatabaseHandler:
             logging.error(f"Failed to connect to Qdrant: {e}")
             raise
 
-        # Ensure collection exists
+        # Ensure the collection exists
         try:
             if not self.client.collection_exists(collection_name=self.collection_name):
                 self.client.create_collection(
@@ -31,18 +49,29 @@ class DatabaseHandler:
             logging.error(f"Failed to ensure collection existence: {e}")
             raise
 
-    def insert_documents(self, documents: list):
+    def insert_documents(self, documents: List[Dict]):
+        """
+        Inserts documents into the Qdrant collection.
+
+        Parameters:
+        documents (List[Dict]): A list of dictionaries containing document information.
+        """
+
         try:
             points = []
             for idx, doc in enumerate(documents):
+                print(f"this is :{doc['text']}")
                 point = PointStruct(
                     id=idx,
                     vector=doc['embedding'],
                     payload={
                         "file_name": doc['file_name'],
                         "topic": doc['topic'],
-                        "text": doc['text'],
-                        "file_type": doc['file_type']
+                        "sub_topic": doc.get('sub_topic', ''),
+                        "sha256": doc['sha256'],
+                        "fuzzy_hash": doc['fuzzy_hash'],
+                        "file_type": doc['file_type'],
+                        "text": doc['text']
                     }
                 )
                 points.append(point)
@@ -55,117 +84,134 @@ class DatabaseHandler:
             logging.error(f"Failed to insert documents into Qdrant: {e}")
             raise
 
-    def generate_query_vector(self, query_text: str):
-        """Generate vector (embedding) for the query text."""
-        return self.embedding_model.encode(query_text).tolist()
+    def generate_query_vector(self, query_text: str) -> List[float]:
+        """
+        Generates an embedding vector for the query text.
+
+        Parameters:
+        query_text (str): The query text.
+
+        Returns:
+        List[float]: The embedding vector.
+        """
+        try:
+            return self.embedding_model.encode(query_text).tolist()
+        except Exception as e:
+            logging.error(f"Failed to generate query vector: {e}")
+            raise
 
     def get_statistics(self) -> dict:
+        """
+        Retrieves statistics from the Qdrant collection, including counts for main topics and subtopics.
+
+        Returns:
+        dict: A dictionary containing document statistics.
+        """
         try:
-            # Retrieve total document count
+            # Get total document count
             total = self.client.count(collection_name=self.collection_name).count
 
-            # Retrieve documents in batches using pagination with search
-            limit = 1000  # Adjust the limit based on your needs
-            offset = 0  # Start from the first point
-
-            # Store topics count
+            # Initialize topic and subtopic counts
             topics = {}
+            subtopics = {}
+
+            # Retrieve all documents using pagination
+            offset = 0
+            limit = 1000  # Adjust based on needs
 
             while True:
-                # Use a query vector with dimension 384 (e.g., all zeros for no vector-based search)
-                query_vector = np.zeros(384).tolist()  # Placeholder vector of zeros, dimension 384
+                # Perform a vector search with a dummy query vector to retrieve all documents
+                dummy_vector = np.zeros(384).tolist()
                 search_result = self.client.search(
                     collection_name=self.collection_name,
-                    query_vector=query_vector,  # Empty query vector for retrieval (no specific query)
+                    query_vector=dummy_vector,
                     limit=limit,
-                    offset=offset
+                    offset=offset,
+                    with_payload=True
                 )
 
-                # Ensure points are returned, otherwise break the loop
-                if isinstance(search_result, list):  # Check if the result is a list (not a dictionary)
-                    points = search_result
-                else:
-                    points = search_result.get('points', [])
-
-                if not points:  # If no points are returned, stop the loop
+                if not search_result:
                     break
 
-                # Process the points
-                for point in points:
+                for point in search_result:
                     topic = point.payload.get('topic', 'Unknown')
-                    topics[topic] = topics.get(topic, 0) + 1
+                    sub_topic = point.payload.get('sub_topic', 'Unknown')
 
-                offset += limit  # Increment offset for the next batch
+                    # Count main topics
+                    if topic in topics:
+                        topics[topic] += 1
+                    else:
+                        topics[topic] = 1
 
-            statistics = {"total_documents": total, "documents_per_topic": topics}
+                    # Count subtopics
+                    if sub_topic in subtopics:
+                        subtopics[sub_topic] += 1
+                    else:
+                        subtopics[sub_topic] = 1
+
+                offset += limit
+
+            statistics = {
+                "total_documents": total,
+                "documents_per_topic": topics,
+                "documents_per_subtopic": subtopics
+            }
             logging.info("Retrieved statistics from Qdrant.")
             return statistics
         except Exception as e:
             logging.error(f"Failed to retrieve statistics from Qdrant: {e}")
             raise
 
-    def search_documents_by_vector(self, topic: str = "", query_text: str = "", limit: int = 10) -> list:
+    def search_documents_by_vector(self, query_text: str, topic: str = "", limit: int = 10) -> List[Dict]:
         """
-        Search for documents by vector similarity, with optional topic and text filters.
+        Searches for documents based on vector similarity, with optional topic and text filters.
 
         Parameters:
-        query_vector (list): The vector representing the search query.
+        query_text (str): The query text.
         topic (str): The topic to filter documents by (optional).
-        query_text (str): The text to match (optional, for boosting the relevance of the search).
         limit (int): The number of results to return.
 
         Returns:
-        list: A list of documents matching the search criteria.
+        List[Dict]: A list of documents matching the search criteria.
         """
         try:
-            # If query_text is provided, generate query vector from it
-            if query_text:
-                query_vector = self.generate_query_vector(query_text)  # Ensure this returns a list of floats
-            print(query_vector)
-            # If query_vector is a string, this is an issue since Qdrant expects a list of floats.
-            if isinstance(query_vector, str):
-                raise ValueError("The query vector must be a list of floats, not a string.")
+            # Generate query vector
+            query_vector = self.generate_query_vector(query_text)
+            if not isinstance(query_vector, list):
+                raise ValueError("The query vector must be a list of floats.")
 
-            # Ensure query_vector is a list or numpy array before proceeding
-            if isinstance(query_vector, list):
-                query_vector = np.array(query_vector)  # Convert to numpy array
-            query_vector = query_vector.tolist()  # Ensure it's a list of floats
-
-            # Build the search filter based on topic and query_text
+            # Build search filter based on topic
             search_filter = {}
             if topic:
                 search_filter["must"] = [
                     {
-                        "key": "topic",  # Searching by topic
+                        "key": "topic",
                         "match": {
-                            "value": topic  # The topic to match
+                            "value": topic
                         }
                     }
                 ]
 
-            # Perform the vector search using the query_vector and the filters
+            # Perform vector search using the query vector and filters
             search_result = self.client.search(
                 collection_name=self.collection_name,
-                query_vector=query_vector,  # Pass query vector directly
-                query_filter=search_filter,  # Pass the built filter
-                limit=limit  # Set the limit for the number of results
+                query_vector=query_vector,
+                query_filter=search_filter,
+                limit=limit,
+                with_payload=True
             )
 
-            # Extract the relevant points from the search results
-            print(search_result)  # This will print the structure of search_result
-
-            # Extract the points from the search result (assuming it is a list of ScoredPoint objects)
-            points = search_result.get('result', []) if isinstance(search_result, dict) else search_result
-
-            # Extract the relevant points from the search results
+            # Extract documents from search results
             documents = []
-            for point in points:
-                # Access properties using dot notation
+            for point in search_result:
                 documents.append({
-                    "file_name": point.payload.get('file_name'),  # Access payload attribute
+                    "file_name": point.payload.get('file_name'),
                     "topic": point.payload.get('topic'),
-                    "text": point.payload.get('text'),
-                    "file_type": point.payload.get('file_type')
+                    "sub_topic": point.payload.get('sub_topic'),
+                    "sha256": point.payload.get('sha256'),
+                    "fuzzy_hash": point.payload.get('fuzzy_hash'),
+                    "file_type": point.payload.get('file_type'),
+                    "text": point.payload.get('text')
                 })
 
             logging.info(f"Found {len(documents)} documents matching the query.")
@@ -173,4 +219,50 @@ class DatabaseHandler:
 
         except Exception as e:
             logging.error(f"Failed to search documents by vector: {e}")
+            raise
+
+    def get_all_documents(self) -> List[Dict]:
+        """
+        Retrieves all documents from the Qdrant collection.
+
+        Returns:
+        List[Dict]: A list of all documents with their metadata.
+        """
+        try:
+            documents = []
+            limit = 1000  # Adjust based on needs
+            offset = 0
+
+            while True:
+                # Use a dummy query vector to retrieve all documents
+                dummy_vector = np.zeros(384).tolist()
+                search_result = self.client.search(
+                    collection_name=self.collection_name,
+                    query_vector=dummy_vector,
+                    limit=limit,
+                    offset=offset,
+                    with_payload=True
+                )
+
+                if not search_result:
+                    break
+
+                for point in search_result:
+                    documents.append({
+                        "file_name": point.payload.get('file_name'),
+                        "topic": point.payload.get('topic'),
+                        "sub_topic": point.payload.get('sub_topic'),
+                        "sha256": point.payload.get('sha256'),
+                        "fuzzy_hash": point.payload.get('fuzzy_hash'),
+                        "file_type": point.payload.get('file_type'),
+                        "text": point.payload.get('text')
+                    })
+
+                offset += limit
+
+            logging.info(f"Retrieved all {len(documents)} documents from Qdrant.")
+            return documents
+
+        except Exception as e:
+            logging.error(f"Failed to retrieve all documents from Qdrant: {e}")
             raise

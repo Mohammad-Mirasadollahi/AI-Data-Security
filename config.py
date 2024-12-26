@@ -1,8 +1,10 @@
 # config.py
 
 import os
+
 import yaml
 from dotenv import load_dotenv
+
 
 class Config:
     def __init__(self, config_file: str = 'config.yaml', env_file: str = '.env'):
