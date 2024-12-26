@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import xml.etree.ElementTree as ET
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 
 import textract
 import yaml
@@ -16,10 +16,13 @@ from docx import Document
 from ebooklib import epub
 from pptx import Presentation
 
+from Utils.utils import calculate_sha256, calculate_fuzzy_hash
+
 
 class DocumentLoader:
     """
-    A class to load and extract text from various types of text-based files.
+    A class to load and extract text from various types of text-based files,
+    and compute their SHA-256 and Fuzzy hashes.
     """
 
     # Supported extensions mapped to their extraction methods
@@ -43,16 +46,21 @@ class DocumentLoader:
         '.sql': 'extract_sql',
     }
 
-    def __init__(self, logger: logging.Logger):
+    def __init__(self, log_file: str = 'document_loader.log'):
         """
-        Initializes the DocumentLoader.
+        Initializes the DocumentLoader with logging configurations.
 
         Parameters:
-        logger (logging.Logger): Logger instance for logging.
+        log_file (str): The name of the log file.
         """
         self.file_names = []
         self.documents = []
-        self.logger = logger
+        self.logger = logging.getLogger('DocumentLoader')
+        self.logger.setLevel(logging.INFO)
+        handler = logging.FileHandler(log_file)
+        handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s:%(message)s'))
+        if not self.logger.handlers:
+            self.logger.addHandler(handler)
         self.logger.info("DocumentLoader initialized.")
 
     # Extraction methods for each supported file type
@@ -79,7 +87,12 @@ class DocumentLoader:
 
     def extract_rtf(self, file_path):
         """Extracts text from a .rtf file."""
-        return textract.process(file_path, encoding='utf-8', errors='replace').decode('utf-8', errors='replace')
+        try:
+            text = textract.process(file_path, encoding='utf-8', errors='replace').decode('utf-8', errors='replace')
+            return text
+        except Exception as e:
+            self.logger.error(f"Failed to extract RTF from '{file_path}': {e}")
+            return ""
 
     def extract_pptx(self, file_path):
         """Extracts text from a .pptx file."""
@@ -93,9 +106,13 @@ class DocumentLoader:
 
     def extract_html(self, file_path):
         """Extracts text from a .html or .htm file."""
-        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-            soup = BeautifulSoup(f, 'html.parser')
-        return soup.get_text()
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                soup = BeautifulSoup(f, 'html.parser')
+            return soup.get_text()
+        except Exception as e:
+            self.logger.error(f"Failed to extract HTML from '{file_path}': {e}")
+            return ""
 
     def extract_md(self, file_path):
         """Extracts text from a .md (Markdown) file."""
@@ -104,31 +121,47 @@ class DocumentLoader:
 
     def extract_csv(self, file_path):
         """Extracts text from a .csv file."""
-        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-            reader = csv.reader(f)
-            return '\n'.join(['\t'.join(row) for row in reader])
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                reader = csv.reader(f)
+                return '\n'.join(['\t'.join(row) for row in reader])
+        except Exception as e:
+            self.logger.error(f"Failed to extract CSV from '{file_path}': {e}")
+            return ""
 
     def extract_epub(self, file_path):
         """Extracts text from a .epub file."""
-        book = epub.read_epub(file_path)
-        text = []
-        for item in book.get_items():
-            if item.get_type() == epub.ITEM_DOCUMENT:
-                soup = BeautifulSoup(item.get_content(), 'html.parser')
-                text.append(soup.get_text())
-        return '\n'.join(text)
+        try:
+            book = epub.read_epub(file_path)
+            text = []
+            for item in book.get_items():
+                if item.get_type() == epub.ITEM_DOCUMENT:
+                    soup = BeautifulSoup(item.get_content(), 'html.parser')
+                    text.append(soup.get_text())
+            return '\n'.join(text)
+        except Exception as e:
+            self.logger.error(f"Failed to extract EPUB from '{file_path}': {e}")
+            return ""
 
     def extract_json(self, file_path):
         """Extracts text from a .json file."""
-        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-            data = json.load(f)
-        return json.dumps(data, ensure_ascii=False, indent=4)
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                data = json.load(f)
+            return json.dumps(data, ensure_ascii=False, indent=4)
+        except Exception as e:
+            self.logger.error(f"Failed to extract JSON from '{file_path}': {e}")
+            return ""
 
     def extract_xml(self, file_path):
         """Extracts text from a .xml file."""
-        tree = ET.parse(file_path)
-        root = tree.getroot()
-        return self._extract_text_from_xml(root)
+        try:
+            tree = ET.parse(file_path)
+            root = tree.getroot()
+            return self._extract_text_from_xml(root)
+        except Exception as e:
+            self.logger.error(f"Failed to extract XML from '{file_path}': {e}")
+            return ""
 
     def _extract_text_from_xml(self, element):
         """Recursively extracts text from XML elements."""
@@ -143,31 +176,47 @@ class DocumentLoader:
 
     def extract_yaml(self, file_path):
         """Extracts text from a .yaml or .yml file."""
-        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-            data = yaml.safe_load(f)
-        return yaml.dump(data, allow_unicode=True, sort_keys=False)
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                data = yaml.safe_load(f)
+            return yaml.dump(data, allow_unicode=True, sort_keys=False)
+        except Exception as e:
+            self.logger.error(f"Failed to extract YAML from '{file_path}': {e}")
+            return ""
 
     def extract_ini(self, file_path):
         """Extracts text from a .ini file."""
-        config = configparser.ConfigParser()
-        config.read(file_path, encoding='utf-8')
-        output = []
-        for section in config.sections():
-            output.append(f"[{section}]")
-            for key, value in config.items(section):
-                output.append(f"{key} = {value}")
-            output.append("")  # Add a newline between sections
-        return '\n'.join(output)
+        try:
+            config = configparser.ConfigParser()
+            config.read(file_path, encoding='utf-8')
+            output = []
+            for section in config.sections():
+                output.append(f"[{section}]")
+                for key, value in config.items(section):
+                    output.append(f"{key} = {value}")
+                output.append("")  # Add a newline between sections
+            return '\n'.join(output)
+        except Exception as e:
+            self.logger.error(f"Failed to extract INI from '{file_path}': {e}")
+            return ""
 
     def extract_log(self, file_path):
         """Extracts text from a .log file."""
-        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-            return f.read()
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                return f.read()
+        except Exception as e:
+            self.logger.error(f"Failed to extract LOG from '{file_path}': {e}")
+            return ""
 
     def extract_sql(self, file_path):
         """Extracts text from a .sql file."""
-        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-            return f.read()
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                return f.read()
+        except Exception as e:
+            self.logger.error(f"Failed to extract SQL from '{file_path}': {e}")
+            return ""
 
     # Methods to add or remove supported extensions dynamically
 
@@ -201,15 +250,16 @@ class DocumentLoader:
         else:
             self.logger.warning(f"Extension {extension} is not supported and cannot be removed.")
 
-    def load_documents(self, folder_path: str) -> Tuple[List[str], List[str]]:
+    def load_documents(self, folder_path: str) -> Tuple[List[str], List[Dict]]:
         """
-        Loads and extracts text from all supported documents in a specified folder.
+        Loads and extracts text from all supported documents in a specified folder,
+        and computes their SHA-256 and Fuzzy hashes.
 
         Parameters:
         folder_path (str): Path to the folder containing documents.
 
         Returns:
-        Tuple[List[str], List[str]]: A tuple containing a list of file names and a list of their corresponding extracted texts.
+        Tuple[List[str], List[Dict]]: A tuple containing a list of file names and a list of their corresponding extracted texts with hashes.
         """
         self.file_names = []
         self.documents = []
@@ -228,7 +278,15 @@ class DocumentLoader:
                     extractor = getattr(self, method_name)
                     text = extractor(file_path)
                     if text.strip():  # Ensure that extracted text is not empty
-                        self.documents.append(text)
+                        sha256 = calculate_sha256(file_path)
+                        fuzzy = calculate_fuzzy_hash(file_path)
+                        self.documents.append({
+                            "file_name": filename,
+                            "file_type": file_ext.strip('.'),
+                            "text": text,
+                            "sha256": sha256,
+                            "fuzzy_hash": fuzzy
+                        })
                         self.file_names.append(filename)
                         self.logger.info(f"Successfully loaded file: {filename}")
                     else:
@@ -241,11 +299,11 @@ class DocumentLoader:
         self.logger.info(f"Total documents loaded: {len(self.documents)}")
         return self.file_names, self.documents
 
-    def get_documents(self) -> Tuple[List[str], List[str]]:
+    def get_documents(self) -> Tuple[List[str], List[Dict]]:
         """
         Retrieves the loaded documents.
 
         Returns:
-        Tuple[List[str], List[str]]: A tuple containing a list of file names and a list of their corresponding extracted texts.
+        Tuple[List[str], List[Dict]]: A tuple containing a list of file names and a list of their corresponding extracted texts with hashes.
         """
         return self.file_names, self.documents
