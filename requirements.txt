@@ -19,3 +19,4 @@ transformers==4.44.2
 keybert
 fuzzyhashlib
 ppdeep
+bertopic
