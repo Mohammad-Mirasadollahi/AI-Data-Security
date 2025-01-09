@@ -8,7 +8,7 @@ from typing import List, Dict
 from DatabaseHandler.database_handler import DatabaseHandler
 from DocumentLoader.document_loader import DocumentLoader
 from TopicModeler.topic_modeler import TopicModeler
-
+from TopicModeler.auto_topic_modeler import  AutoTopicModeler
 
 def setup_logging(log_folder: str, log_file: str = 'document_processor.log'):
     """
@@ -138,12 +138,96 @@ def process_documents(predefined_topics: Dict[str, List[str]], input_folder: str
         logger.info("Document organization and storage complete.")
     except Exception as e:
         logger.error(f"Failed to organize documents into folders: {e}")
+def process_auto_topics(input_folder: str, output_folder: str, db_handler: DatabaseHandler):
+    """
+    Processes documents: load, perform automatic topic modeling, store in DB, organize output folders.
+
+    Parameters:
+    input_folder (str): Path to input folder containing documents.
+    output_folder (str): Path to output folder to organize documents by auto topics.
+    db_handler (DatabaseHandler): Instance of DatabaseHandler to interact with Qdrant.
+    """
+    logger = logging.getLogger(__name__)
+
+    # Initialize DocumentLoader (reusing the same loader)
+    document_loader = DocumentLoader(log_file=os.path.join('logs', 'document_loader.log'))
+    file_names, documents = document_loader.load_documents(input_folder)
+
+    if not documents:
+        logger.error("No documents to process for automatic topics. Exiting.")
+        return
+
+    num_documents = len(documents)
+    logger.info(f"Number of documents loaded for automatic topics: {num_documents}")
+
+    # Initialize AutoTopicModeler
+    auto_topic_modeler = AutoTopicModeler()
+    logger.info("AutoTopicModeler initialized.")
+
+    # Extract document texts
+    document_texts = [doc["text"] for doc in documents]
+
+    # Fit the AutoTopicModeler
+    try:
+        auto_topic_modeler.fit_model(document_texts)
+        auto_topic_modeler.assign_topic_names()
+        assigned_auto_topics = auto_topic_modeler.get_topic_assignments()
+        auto_embeddings = auto_topic_modeler.get_embeddings()
+        logger.info("AutoTopicModeler processed documents successfully.")
+    except Exception as e:
+        logger.error(f"Failed to process documents with AutoTopicModeler: {e}")
+        return
+
+    # Prepare documents for database insertion with automatic topics
+    documents_auto_to_insert = []
+    for file_name, auto_topic, embedding in zip(file_names, assigned_auto_topics, auto_embeddings):
+        file_type = os.path.splitext(file_name)[1].lower().strip('.')
+        documents_auto_to_insert.append({
+            "file_name": file_name,
+            "topic": auto_topic,
+            "sub_topic": "",  # Placeholder for subtopics if needed
+            "text": document_loader.documents[file_names.index(file_name)]['text'],
+            "file_type": file_type,
+            "sha256": document_loader.documents[file_names.index(file_name)]['sha256'],
+            "fuzzy_hash": document_loader.documents[file_names.index(file_name)]['fuzzy_hash'],
+            "embedding": embedding  # Already a list
+        })
+
+    # Insert automatic topics into Qdrant
+    try:
+        db_handler.insert_documents(documents_auto_to_insert)
+        logger.info("Inserted documents with automatic topics into Qdrant successfully.")
+    except Exception as e:
+        logger.error(f"Failed to insert documents with automatic topics into database: {e}")
+        return
+
+    # Organize documents into output folder subdirectories by automatic topic
+    try:
+        os.makedirs(output_folder, exist_ok=True)
+        for doc in documents_auto_to_insert:
+            file_name = doc['file_name']
+            auto_topic = doc['topic']
+            src_path = os.path.join(input_folder, file_name)
+
+            # Define destination folder based on automatic topic
+            # Replace characters that are invalid in folder names
+            safe_auto_topic = "".join([c if c.isalnum() or c in " _-:" else "_" for c in auto_topic])
+            dest_folder = os.path.join(output_folder, "Auto_Topics", safe_auto_topic)
+
+            dest_path = os.path.join(dest_folder, file_name)
+            os.makedirs(dest_folder, exist_ok=True)
+            shutil.copy2(src_path, dest_path)
+            logger.info(f"Copied '{file_name}' to '{dest_folder}'.")
+        logger.info("Document organization by automatic topics complete.")
+    except Exception as e:
+        logger.error(f"Failed to organize documents into automatic topic folders: {e}")
 
 
 if __name__ == "__main__":
     # Define input and output folder paths
-    input_folder = "input_documents"  # Replace with your input folder path
-    output_folder = "./organized_documents"  # Replace with your output folder path
+    input_folder = "input_docs"  # Replace with your input folder path
+    output_folder_predefined = "./organized_documents_predefined"  # Replace with your output folder path for predefined topics
+    output_folder_auto = "./organized_documents_auto"  # Replace with your output folder path for automatic topics
 
     # Define main categories and subcategories
     predefined_topics = {
@@ -168,9 +252,15 @@ if __name__ == "__main__":
 
     # Ensure output and log directories exist
     try:
-        os.makedirs(output_folder, exist_ok=True)
+        os.makedirs(output_folder_predefined, exist_ok=True)
     except Exception as e:
-        print(f"Failed to create output folder '{output_folder}': {e}")
+        print(f"Failed to create output folder '{output_folder_predefined}': {e}")
+        exit(1)
+
+    try:
+        os.makedirs(output_folder_auto, exist_ok=True)
+    except Exception as e:
+        print(f"Failed to create output folder '{output_folder_auto}': {e}")
         exit(1)
 
     try:
@@ -193,10 +283,17 @@ if __name__ == "__main__":
         logging.error(f"Failed to initialize DatabaseHandler: {e}")
         exit(1)
 
-    # Execute the processing function
-    process_documents(
-        predefined_topics=predefined_topics,
+    # # Execute the predefined topic processing function
+    # process_documents(
+    #     predefined_topics=predefined_topics,
+    #     input_folder=input_folder,
+    #     output_folder=output_folder_predefined,
+    #     db_handler=db_handler
+    # )
+
+    #Execute the automatic topic processing function
+    process_auto_topics(
         input_folder=input_folder,
-        output_folder=output_folder,
+        output_folder=output_folder_auto,
         db_handler=db_handler
     )
