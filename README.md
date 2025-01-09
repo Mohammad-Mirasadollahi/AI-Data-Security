@@ -159,8 +159,10 @@ AI-Data-Security/
 If you encounter any issues or have suggestions for improvements, feel free to open an issue or submit a pull request.
 Your feedback is invaluable!
 
-## 🛠️ Quick Start Guide
 
+---
+## Installation Guide
+#### _updating..._
 ### 1. Clone the Repository
 
 Clone the project repository to your local machine using Git:
@@ -169,51 +171,30 @@ Clone the project repository to your local machine using Git:
 git clone https://github.com/Mohammad-Mirasadollahi/AI-Data-Security.git
 ```
 
-### 2. Create a Virtual Environment
+### 2. Navigate to the Project Directory
 
-Navigate to the project directory and create a virtual environment to manage dependencies:
+Change into the project directory:
 
 ```bash
 cd AI-Data-Security
-python -m venv venv
 ```
 
-Activate the virtual environment:
+### 3. Run the Installation Script
 
-- **Windows:**
-  ```bash
-  venv\Scripts\activate
-  ```
-- **macOS/Linux:**
-  ```bash
-  source venv/bin/activate
-  ```
-
-### 3. Install Dependencies
-
-Install the required Python packages:
+Execute the `install.sh` script to set up the environment and install all necessary dependencies:
 
 ```bash
-pip install -r requirements.txt
+source install.sh
 ```
 
-### 4. Setup Qdrant
-
-Run Qdrant using Docker to set up the vector database:
+> **Note:** If you encounter a permission error, make the script executable first:
 
 ```bash
-docker run -p 6333:6333 qdrant/qdrant
+chmod +x install.sh
+source install.sh
 ```
 
-### 5. Configure the Application
-
-- **Environment Variables:**  
-  Create a `.env` file with your Qdrant configuration.
-
-- **YAML Configuration:**  
-  Define your predefined topics and folder paths in `config.yaml`.
-
-### 6. Run the Application
+### 4. Run the Application
 
 Launch the Streamlit app:
 
@@ -221,7 +202,7 @@ Launch the Streamlit app:
 streamlit run app.py
 ```
 
-Access the application via the URL provided in the terminal, typically `http://localhost:8501`.
+Access the application via the URL provided in the terminal, typically [http://localhost:8501](http://localhost:8501).
 
 ---
 
