@@ -8,7 +8,7 @@ import streamlit as st
 
 from DatabaseHandler.database_handler import DatabaseHandler
 from config import Config
-from main import setup_logging, process_documents  # Import functions from main.py
+from main import setup_logging, process_documents, process_auto_topics  # Import both processing functions from main.py
 
 
 # Initialize logging for the Streamlit app
@@ -64,40 +64,57 @@ def main():
     st.title("Document Processing and Categorization Tool")
     st.write("Upload documents, assign topics, and manage your document database.")
 
-    st.header("1. Input Configuration")
+    st.header("1. Processing Configuration")
 
-    # Predefined Topics and Subcategories Section (Outside of st.form)
-    st.subheader("Predefined Topics and Subcategories")
+    # Selection between Predefined Topics and Automatic Topics
+    processing_mode = st.radio(
+        "Select Processing Mode:",
+        ("Predefined Topics", "Automatic Topics"),
+        help="Choose between using predefined topics or automatic topic modeling."
+    )
 
-    # Button to add a new main topic
-    if st.button("Add Main Topic"):
-        add_main_topic()
+    if processing_mode == "Predefined Topics":
+        st.subheader("Predefined Topics and Subcategories")
 
-    # Display all main topics and their subtopics
-    for idx, topic in enumerate(st.session_state.topics):
-        with st.expander(f"Main Topic {idx + 1}"):
-            # Input for main topic name
-            main_topic = st.text_input(f"Main Topic {idx + 1}", value=topic['main_topic'], key=f"main_topic_{idx}")
-            st.session_state.topics[idx]['main_topic'] = main_topic
+        # Button to add a new main topic
+        if st.button("Add Main Topic"):
+            add_main_topic()
 
-            # Button to add a subtopic
-            if st.button(f"Add Subtopic to Main Topic {idx + 1}", key=f"add_subtopic_{idx}"):
-                add_subtopic(idx)
+        # Display all main topics and their subtopics
+        for idx, topic in enumerate(st.session_state.topics):
+            with st.expander(f"Main Topic {idx + 1}"):
+                # Input for main topic name
+                main_topic = st.text_input(
+                    f"Main Topic {idx + 1}",
+                    value=topic['main_topic'],
+                    key=f"main_topic_{idx}"
+                )
+                st.session_state.topics[idx]['main_topic'] = main_topic
 
-            # Display all subtopics for this main topic
-            for sub_idx, subtopic in enumerate(topic['subtopics']):
-                col1, col2 = st.columns([8, 2])
-                with col1:
-                    subtopic_input = st.text_input(f"Subtopic {sub_idx + 1}", value=subtopic,
-                                                   key=f"subtopic_{idx}_{sub_idx}")
-                    st.session_state.topics[idx]['subtopics'][sub_idx] = subtopic_input
-                with col2:
-                    if st.button(f"Remove Subtopic {sub_idx + 1}", key=f"remove_subtopic_{idx}_{sub_idx}"):
-                        remove_subtopic(idx, sub_idx)
+                # Button to add a subtopic
+                if st.button(f"Add Subtopic to Main Topic {idx + 1}", key=f"add_subtopic_{idx}"):
+                    add_subtopic(idx)
 
-            # Button to remove the main topic
-            if st.button(f"Remove Main Topic {idx + 1}", key=f"remove_main_topic_{idx}"):
-                remove_main_topic(idx)
+                # Display all subtopics for this main topic
+                for sub_idx, subtopic in enumerate(topic['subtopics']):
+                    col1, col2 = st.columns([8, 2])
+                    with col1:
+                        subtopic_input = st.text_input(
+                            f"Subtopic {sub_idx + 1}",
+                            value=subtopic,
+                            key=f"subtopic_{idx}_{sub_idx}"
+                        )
+                        st.session_state.topics[idx]['subtopics'][sub_idx] = subtopic_input
+                    with col2:
+                        if st.button(
+                                f"Remove Subtopic {sub_idx + 1}",
+                                key=f"remove_subtopic_{idx}_{sub_idx}"
+                        ):
+                            remove_subtopic(idx, sub_idx)
+
+                # Button to remove the main topic
+                if st.button(f"Remove Main Topic {idx + 1}", key=f"remove_main_topic_{idx}"):
+                    remove_main_topic(idx)
 
     st.subheader("Input and Output Folder Paths")
 
@@ -117,47 +134,6 @@ def main():
 
     # Button to Start Processing (Separate from the topic/subtopic dynamic interactions)
     if st.button('Start Processing'):
-        # Validate that all main topics and subtopics are filled
-        valid = True
-        for idx, topic in enumerate(st.session_state.topics):
-            if not topic['main_topic']:
-                st.error(f"Main Topic {idx + 1} is empty.")
-                valid = False
-            for sub_idx, subtopic in enumerate(topic['subtopics']):
-                if not subtopic:
-                    st.error(f"Subtopic {sub_idx + 1} under Main Topic {idx + 1} is empty.")
-                    valid = False
-        if not valid:
-            st.stop()
-
-        # Process predefined topics and subcategories
-        try:
-            predefined_topics = {}
-            for topic in st.session_state.topics:
-                main_topic = topic['main_topic']
-                subtopics = topic['subtopics']
-                predefined_topics[main_topic] = subtopics
-            if not predefined_topics:
-                st.error("Please provide at least one predefined topic with subcategories.")
-                logger.error("No predefined topics provided by the user.")
-                st.stop()
-        except Exception as e:
-            st.error(f"Failed to parse predefined topics: {e}")
-            logger.error(f"Failed to parse predefined topics: {e}")
-            st.stop()
-
-        # Validate input folder
-        if not input_folder or not os.path.isdir(input_folder):
-            st.error("Please provide a valid input folder path.")
-            logger.error(f"Invalid input folder path provided: {input_folder}")
-            st.stop()
-
-        # Validate output folder
-        if not output_folder:
-            st.error("Please provide a valid output folder path.")
-            logger.error("No output folder path provided by the user.")
-            st.stop()
-
         # Initialize DatabaseHandler
         try:
             db_handler = DatabaseHandler(
@@ -171,11 +147,72 @@ def main():
             logger.error(f"Failed to initialize DatabaseHandler: {e}")
             st.stop()
 
-        # Process Documents
-        with st.spinner('Processing documents...'):
-            process_documents(predefined_topics, input_folder, output_folder, db_handler)
-        st.success('Document processing and categorization completed successfully!')
-        logger.info("Document processing and categorization completed successfully.")
+        if processing_mode == "Predefined Topics":
+            # Validate that all main topics and subtopics are filled
+            valid = True
+            for idx, topic in enumerate(st.session_state.topics):
+                if not topic['main_topic']:
+                    st.error(f"Main Topic {idx + 1} is empty.")
+                    valid = False
+                for sub_idx, subtopic in enumerate(topic['subtopics']):
+                    if not subtopic:
+                        st.error(f"Subtopic {sub_idx + 1} under Main Topic {idx + 1} is empty.")
+                        valid = False
+            if not valid:
+                st.stop()
+
+            # Process predefined topics and subcategories
+            try:
+                predefined_topics = {}
+                for topic in st.session_state.topics:
+                    main_topic = topic['main_topic']
+                    subtopics = topic['subtopics']
+                    predefined_topics[main_topic] = subtopics
+                if not predefined_topics:
+                    st.error("Please provide at least one predefined topic with subcategories.")
+                    logger.error("No predefined topics provided by the user.")
+                    st.stop()
+            except Exception as e:
+                st.error(f"Failed to parse predefined topics: {e}")
+                logger.error(f"Failed to parse predefined topics: {e}")
+                st.stop()
+
+            # Validate input folder
+            if not input_folder or not os.path.isdir(input_folder):
+                st.error("Please provide a valid input folder path.")
+                logger.error(f"Invalid input folder path provided: {input_folder}")
+                st.stop()
+
+            # Validate output folder
+            if not output_folder:
+                st.error("Please provide a valid output folder path.")
+                logger.error("No output folder path provided by the user.")
+                st.stop()
+
+            # Process Documents
+            with st.spinner('Processing documents with predefined topics...'):
+                process_documents(predefined_topics, input_folder, output_folder, db_handler)
+            st.success('Document processing and categorization with predefined topics completed successfully!')
+            logger.info("Document processing and categorization with predefined topics completed successfully.")
+
+        elif processing_mode == "Automatic Topics":
+            # Validate input folder
+            if not input_folder or not os.path.isdir(input_folder):
+                st.error("Please provide a valid input folder path.")
+                logger.error(f"Invalid input folder path provided: {input_folder}")
+                st.stop()
+
+            # Validate output folder
+            if not output_folder:
+                st.error("Please provide a valid output folder path.")
+                logger.error("No output folder path provided by the user.")
+                st.stop()
+
+            # Process Automatic Topics
+            with st.spinner('Processing documents with automatic topic modeling...'):
+                process_auto_topics(input_folder, output_folder, db_handler)
+            st.success('Document processing and categorization with automatic topics completed successfully!')
+            logger.info("Document processing and categorization with automatic topics completed successfully.")
 
     st.header("2. Database Statistics")
 
@@ -225,7 +262,7 @@ def main():
                 # Select and reorder columns as desired
                 desired_columns = ['file_name', 'topic', 'sub_topic', 'file_type', 'sha256', 'fuzzy_hash', 'text']
                 df_documents = df_documents[desired_columns]
-                print(df_documents['text'])
+
                 # Rename columns for better readability
                 df_documents.rename(columns={
                     'file_name': 'File Name',
@@ -303,8 +340,11 @@ def main():
                     st.error("Please enter some text to search.")
                     st.stop()
                 with st.spinner(f"Searching for documents in topic: {selected_topic}..."):
-                    documents = db_handler.search_documents_by_vector(query_text=query_text, topic=selected_topic,
-                                                                      limit=10)
+                    documents = db_handler.search_documents_by_vector(
+                        query_text=query_text,
+                        topic=selected_topic,
+                        limit=10
+                    )
                 if documents:
                     # Create a DataFrame from search results
                     df_search_results = pd.DataFrame(documents)

@@ -7,8 +7,9 @@ from typing import List, Dict
 
 from DatabaseHandler.database_handler import DatabaseHandler
 from DocumentLoader.document_loader import DocumentLoader
+from TopicModeler.auto_topic_modeler import AutoTopicModeler
 from TopicModeler.topic_modeler import TopicModeler
-from TopicModeler.auto_topic_modeler import  AutoTopicModeler
+
 
 def setup_logging(log_folder: str, log_file: str = 'document_processor.log'):
     """
@@ -138,6 +139,8 @@ def process_documents(predefined_topics: Dict[str, List[str]], input_folder: str
         logger.info("Document organization and storage complete.")
     except Exception as e:
         logger.error(f"Failed to organize documents into folders: {e}")
+
+
 def process_auto_topics(input_folder: str, output_folder: str, db_handler: DatabaseHandler):
     """
     Processes documents: load, perform automatic topic modeling, store in DB, organize output folders.
@@ -291,7 +294,7 @@ if __name__ == "__main__":
     #     db_handler=db_handler
     # )
 
-    #Execute the automatic topic processing function
+    # Execute the automatic topic processing function
     process_auto_topics(
         input_folder=input_folder,
         output_folder=output_folder_auto,
