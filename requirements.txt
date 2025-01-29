@@ -20,3 +20,5 @@ keybert
 fuzzyhashlib
 ppdeep
 bertopic
+fastapi
+uvicorn
